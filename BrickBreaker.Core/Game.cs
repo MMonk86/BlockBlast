@@ -63,11 +63,33 @@ namespace BrickBreaker.Core
             if (IsGameOver || IsWon) return;
 
             // AI Paddle Movement
+            double targetX = Ball.X;
+
+            // If ball is coming down, try to aim
+            if (Ball.VelocityY > 0)
+            {
+                double predictedX = PredictBallXAtPaddle();
+                double centroidX = GetBlockCentroidX();
+
+                // If blocks are to the Left of impact, we want to hit ball with Right side of paddle (send Left)
+                // This means PaddleCenter should be to the Right of Ball.
+                // Offset = +35
+
+                double offset = 0;
+                if (Blocks.Count > 0)
+                {
+                    if (centroidX < predictedX) offset = 35; // Aim Left
+                    else offset = -35; // Aim Right
+                }
+
+                targetX = predictedX + offset;
+            }
+
             double paddleCenter = Paddle.X + Paddle.Width / 2;
-            double diff = Ball.X - paddleCenter;
+            double diff = targetX - paddleCenter;
             double aiSpeed = 20; // Fast enough to catch up
 
-            if (Math.Abs(diff) > 10)
+            if (Math.Abs(diff) > 5)
             {
                 if (diff > 0) MovePaddle(aiSpeed);
                 else MovePaddle(-aiSpeed);
@@ -152,6 +174,34 @@ namespace BrickBreaker.Core
 
             double distanceSquared = (distanceX * distanceX) + (distanceY * distanceY);
             return distanceSquared < (ball.Radius * ball.Radius);
+        }
+
+        private double GetBlockCentroidX()
+        {
+            if (Blocks.Count == 0) return Width / 2;
+            double sum = 0;
+            foreach (var b in Blocks) sum += (b.X + b.Width / 2);
+            return sum / Blocks.Count;
+        }
+
+        private double PredictBallXAtPaddle()
+        {
+            // Simple prediction assuming straight line or simple bounce
+            // Not perfect but better than tracking current X
+
+            double timeSteps = (Paddle.Y - Ball.Y) / Ball.VelocityY;
+            if (timeSteps <= 0) return Ball.X;
+
+            double futureX = Ball.X + Ball.VelocityX * timeSteps;
+
+            // Handle simple single wall bounce estimation
+            // (Iterative bounce handling is better but complex for this scope)
+            while (futureX < 0 || futureX > Width)
+            {
+                if (futureX < 0) futureX = -futureX;
+                if (futureX > Width) futureX = 2 * Width - futureX;
+            }
+            return futureX;
         }
 
         private void ResolveBlockCollision(Ball ball, Block block)
