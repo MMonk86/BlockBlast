@@ -36,8 +36,9 @@ namespace BrickBreaker.App
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            if (_leftPressed) _game.MovePaddle(-5);
-            if (_rightPressed) _game.MovePaddle(5);
+            // Manual control removed - AI controls paddle in Game.Update()
+            // if (_leftPressed) _game.MovePaddle(-5);
+            // if (_rightPressed) _game.MovePaddle(5);
 
             _game.Update();
             this.Invalidate(); // Redraw
@@ -45,14 +46,14 @@ namespace BrickBreaker.App
 
         private void MainForm_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Left) _leftPressed = true;
-            if (e.KeyCode == Keys.Right) _rightPressed = true;
+            // if (e.KeyCode == Keys.Left) _leftPressed = true;
+            // if (e.KeyCode == Keys.Right) _rightPressed = true;
         }
 
         private void MainForm_KeyUp(object sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Left) _leftPressed = false;
-            if (e.KeyCode == Keys.Right) _rightPressed = false;
+            // if (e.KeyCode == Keys.Left) _leftPressed = false;
+            // if (e.KeyCode == Keys.Right) _rightPressed = false;
         }
 
         protected override void OnPaint(PaintEventArgs e)

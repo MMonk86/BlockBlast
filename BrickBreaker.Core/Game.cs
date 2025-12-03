@@ -31,7 +31,8 @@ namespace BrickBreaker.Core
             Paddle = new Paddle(Width / 2 - 50, Height - 30, 100, 20);
 
             // Ball just above paddle
-            Ball = new Ball(Width / 2, Height - 40, 5, 3, -3);
+            // Speed increased by 5x (3 -> 15)
+            Ball = new Ball(Width / 2, Height - 40, 5, 15, -15);
 
             // Blocks
             Blocks = new List<Block>();
@@ -60,6 +61,17 @@ namespace BrickBreaker.Core
         public void Update()
         {
             if (IsGameOver || IsWon) return;
+
+            // AI Paddle Movement
+            double paddleCenter = Paddle.X + Paddle.Width / 2;
+            double diff = Ball.X - paddleCenter;
+            double aiSpeed = 20; // Fast enough to catch up
+
+            if (Math.Abs(diff) > 10)
+            {
+                if (diff > 0) MovePaddle(aiSpeed);
+                else MovePaddle(-aiSpeed);
+            }
 
             // Move Ball
             Ball.X += Ball.VelocityX;
