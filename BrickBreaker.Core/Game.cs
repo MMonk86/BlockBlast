@@ -12,6 +12,7 @@ namespace BrickBreaker.Core
         public List<Block> Blocks { get; private set; }
         public bool IsGameOver { get; private set; }
         public bool IsWon { get; private set; }
+        public int Score { get; private set; }
 
         public event Action<Block> OnBlockBroken;
 
@@ -26,13 +27,15 @@ namespace BrickBreaker.Core
         {
             IsGameOver = false;
             IsWon = false;
+            Score = 0;
 
             // Paddle at bottom center
             Paddle = new Paddle(Width / 2 - 50, Height - 30, 100, 20);
 
             // Ball just above paddle
-            // Speed increased by 5x (3 -> 15)
-            Ball = new Ball(Width / 2, Height - 40, 5, 15, -15);
+            // Speed increased by 10x from "current" (15).
+            // NOTE: 150 pixels per frame is extremely fast and requires sub-stepping in Update loop.
+            Ball = new Ball(Width / 2, Height - 40, 5, 150, -150);
 
             // Blocks
             Blocks = new List<Block>();
@@ -42,6 +45,7 @@ namespace BrickBreaker.Core
             double blockHeight = 20;
 
             string[] colors = { "Red", "Orange", "Yellow", "Green", "Blue" };
+            Random rnd = new Random();
 
             for (int r = 0; r < rows; r++)
             {
@@ -52,7 +56,8 @@ namespace BrickBreaker.Core
                         10 + r * blockHeight,
                         blockWidth - 2,
                         blockHeight - 2,
-                        colors[r % colors.Length]
+                        colors[r % colors.Length],
+                        rnd.Next(1, 21) // Random Health 1-20
                     ));
                 }
             }
@@ -95,63 +100,124 @@ namespace BrickBreaker.Core
                 else MovePaddle(-aiSpeed);
             }
 
-            // Move Ball
-            Ball.X += Ball.VelocityX;
-            Ball.Y += Ball.VelocityY;
+            // Physics Sub-stepping
+            // With very high speeds, we must move in small steps to prevent tunneling
+            double speed = Math.Sqrt(Ball.VelocityX * Ball.VelocityX + Ball.VelocityY * Ball.VelocityY);
+            double stepSize = Ball.Radius; // Safe step size
+            if (stepSize < 2) stepSize = 2; // Min step
 
-            // Wall Collisions
-            if (Ball.X - Ball.Radius < 0)
-            {
-                Ball.X = Ball.Radius;
-                Ball.VelocityX = -Ball.VelocityX;
-            }
-            else if (Ball.X + Ball.Radius > Width)
-            {
-                Ball.X = Width - Ball.Radius;
-                Ball.VelocityX = -Ball.VelocityX;
-            }
+            double distanceRemaining = speed;
+            double stepRatio = stepSize / speed;
 
-            if (Ball.Y - Ball.Radius < 0)
-            {
-                Ball.Y = Ball.Radius;
-                Ball.VelocityY = -Ball.VelocityY;
-            }
-            // Ball radius is typically small, but we want to make sure the ball is fully off screen or just passed the paddle.
-            // Paddle is at Height - 30.
-            // If Ball.Y > Height, it is definitely gone.
-            else if (Ball.Y - Ball.Radius > Height)
-            {
-                // Missed paddle
-                IsGameOver = true;
-                return;
-            }
+            // If speed is 0 (shouldn't happen) avoid div by zero
+            if (speed < 0.001) return;
 
-            // Paddle Collision
-            if (CheckCollision(Ball, Paddle))
+            while (distanceRemaining > 0)
             {
-                Ball.VelocityY = -Math.Abs(Ball.VelocityY); // Bounce up
+                double moveDist = Math.Min(stepSize, distanceRemaining);
+                double ratio = moveDist / speed;
 
-                // Adjust angle based on where it hit the paddle
-                double hitPoint = Ball.X - (Paddle.X + Paddle.Width / 2);
-                Ball.VelocityX = hitPoint * 0.15; // Simple angle change
-            }
+                // Move Ball partial step
+                Ball.X += Ball.VelocityX * ratio;
+                Ball.Y += Ball.VelocityY * ratio;
 
-            // Block Collision
-            for (int i = Blocks.Count - 1; i >= 0; i--)
-            {
-                if (CheckCollision(Ball, Blocks[i]))
+                distanceRemaining -= moveDist;
+
+                // --- Collision Checks at this sub-step ---
+
+                // Wall Collisions
+                if (Ball.X - Ball.Radius < 0)
                 {
-                    ResolveBlockCollision(Ball, Blocks[i]);
-
-                    OnBlockBroken?.Invoke(Blocks[i]);
-                    Blocks.RemoveAt(i);
-
-                    if (Blocks.Count == 0)
-                    {
-                        IsWon = true;
-                    }
-                    break; // Handle one block collision per frame prevents tunneling usually
+                    Ball.X = Ball.Radius;
+                    Ball.VelocityX = -Ball.VelocityX;
                 }
+                else if (Ball.X + Ball.Radius > Width)
+                {
+                    Ball.X = Width - Ball.Radius;
+                    Ball.VelocityX = -Ball.VelocityX;
+                }
+
+                if (Ball.Y - Ball.Radius < 0)
+                {
+                    Ball.Y = Ball.Radius;
+                    Ball.VelocityY = -Ball.VelocityY;
+                }
+                else if (Ball.Y - Ball.Radius > Height)
+                {
+                    // Missed paddle
+                    IsGameOver = true;
+                    return;
+                }
+
+                // Paddle Collision
+                if (CheckCollision(Ball, Paddle))
+                {
+                    Ball.VelocityY = -Math.Abs(Ball.VelocityY); // Bounce up
+
+                    // Adjust angle based on where it hit the paddle
+                    double hitPoint = Ball.X - (Paddle.X + Paddle.Width / 2);
+                    // Keep the high speed magnitude but change direction
+                    double currentSpeed = Math.Sqrt(Ball.VelocityX*Ball.VelocityX + Ball.VelocityY*Ball.VelocityY);
+
+                    // Calculate new direction vector
+                    // We want a spread of angles.
+                    // Hit point ranges from -50 to +50
+                    // Normalized: -1 to 1
+                    double normalizedHit = hitPoint / (Paddle.Width / 2);
+
+                    // Simple deviation: Add horizontal velocity proportional to hit
+                    Ball.VelocityX = normalizedHit * currentSpeed * 0.75;
+
+                    // Re-normalize to maintain speed
+                    double newSpeed = Math.Sqrt(Ball.VelocityX*Ball.VelocityX + Ball.VelocityY*Ball.VelocityY);
+                    Ball.VelocityX = (Ball.VelocityX / newSpeed) * currentSpeed;
+                    Ball.VelocityY = (Ball.VelocityY / newSpeed) * currentSpeed;
+
+                    // Ensure Y is negative (up)
+                    if (Ball.VelocityY > 0) Ball.VelocityY = -Ball.VelocityY;
+                }
+
+                // Block Collision
+                bool hitBlock = false;
+                for (int i = Blocks.Count - 1; i >= 0; i--)
+                {
+                    if (CheckCollision(Ball, Blocks[i]))
+                    {
+                        ResolveBlockCollision(Ball, Blocks[i]);
+
+                        // Handle health
+                        var block = Blocks[i];
+                        block.Health--;
+                        Score += 10;
+
+                        if (block.Health <= 0)
+                        {
+                            OnBlockBroken?.Invoke(block);
+                            Blocks.RemoveAt(i);
+                            Score += 100; // Bonus for breaking
+                        }
+
+                        if (Blocks.Count == 0)
+                        {
+                            IsWon = true;
+                            return;
+                        }
+                        hitBlock = true;
+                        break; // Handle one block collision per step
+                    }
+                }
+
+                // If we hit something major (paddle or block), we might want to stop this frame's movement
+                // or just continue. For simplicity, continue, but re-evaluating velocities in next loop iteration
+                // would be complex because we are inside a fixed loop based on initial velocity.
+                // However, since we modify VelocityX/Y upon collision, the next x += vx * ratio will use the NEW velocity.
+                // But `speed` variable is constant for the loop.
+                // We should update the `speed` variable if velocity changes direction, but magnitude should stay roughly same.
+                // Actually, if we bounce, we change direction. The loop moves by `moveDist` along the velocity vector.
+                // If we change velocity vector mid-loop, the next sub-step should use the new vector.
+                // So: `Ball.X += Ball.VelocityX * ratio` works fine because it reads current Velocity.
+                // But `distanceRemaining` assumes constant speed.
+                // If speed magnitude changes significantly, this loop logic is slightly flawed, but for Pong physics (constant speed), it's fine.
             }
         }
 
@@ -294,14 +360,18 @@ namespace BrickBreaker.Core
         public double Width { get; set; }
         public double Height { get; set; }
         public string Color { get; set; }
+        public int MaxHealth { get; set; }
+        public int Health { get; set; }
 
-        public Block(double x, double y, double width, double height, string color)
+        public Block(double x, double y, double width, double height, string color, int health)
         {
             X = x;
             Y = y;
             Width = width;
             Height = height;
             Color = color;
+            MaxHealth = health;
+            Health = health;
         }
     }
 }

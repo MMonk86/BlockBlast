@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 using BrickBreaker.Core;
@@ -7,53 +8,39 @@ namespace BrickBreaker.App
 {
     public partial class MainForm : Form
     {
-        private Game _game;
+        private Game _gameLeft;
+        private Game _gameRight;
         private Timer _timer;
-        private bool _leftPressed;
-        private bool _rightPressed;
+        private Stopwatch _gameTimer;
 
         public MainForm()
         {
             InitializeComponent();
 
             this.DoubleBuffered = true;
-            this.Text = "Brick Breaker";
-            this.ClientSize = new Size(800, 600);
+            this.Text = "Brick Breaker - Dual Mode";
+            this.ClientSize = new Size(1600, 600); // Widened for two games
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
 
-            _game = new Game(ClientSize.Width, ClientSize.Height);
-            _game.OnBlockBroken += (b) => { /* Sound? */ };
+            // Split width in half for each game
+            _gameLeft = new Game(800, 550); // Height reduced for status bar space
+            _gameRight = new Game(800, 550);
+
+            _gameTimer = new Stopwatch();
+            _gameTimer.Start();
 
             _timer = new Timer();
             _timer.Interval = 16; // ~60 FPS
             _timer.Tick += Timer_Tick;
             _timer.Start();
-
-            this.KeyDown += MainForm_KeyDown;
-            this.KeyUp += MainForm_KeyUp;
         }
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            // Manual control removed - AI controls paddle in Game.Update()
-            // if (_leftPressed) _game.MovePaddle(-5);
-            // if (_rightPressed) _game.MovePaddle(5);
-
-            _game.Update();
+            _gameLeft.Update();
+            _gameRight.Update();
             this.Invalidate(); // Redraw
-        }
-
-        private void MainForm_KeyDown(object sender, KeyEventArgs e)
-        {
-            // if (e.KeyCode == Keys.Left) _leftPressed = true;
-            // if (e.KeyCode == Keys.Right) _rightPressed = true;
-        }
-
-        private void MainForm_KeyUp(object sender, KeyEventArgs e)
-        {
-            // if (e.KeyCode == Keys.Left) _leftPressed = false;
-            // if (e.KeyCode == Keys.Right) _rightPressed = false;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -62,54 +49,105 @@ namespace BrickBreaker.App
             Graphics g = e.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            if (_game.IsGameOver)
+            // Draw Left Game
+            DrawGame(g, _gameLeft, 0, 0);
+
+            // Draw Right Game
+            DrawGame(g, _gameRight, 800, 0);
+
+            // Draw Separator
+            g.DrawLine(Pens.White, 800, 0, 800, 550);
+
+            // Draw Status Bar
+            DrawStatusBar(g);
+        }
+
+        private void DrawGame(Graphics g, Game game, float offsetX, float offsetY)
+        {
+            // Clip or translate
+            var state = g.Save();
+            g.TranslateTransform(offsetX, offsetY);
+
+            // Background for game area
+            g.FillRectangle(Brushes.Black, 0, 0, (float)game.Width, (float)game.Height);
+
+            if (game.IsGameOver)
             {
-                string msg = "Game Over! Press R to Restart.";
+                string msg = "Game Over!";
                 Font font = new Font("Arial", 24);
                 SizeF size = g.MeasureString(msg, font);
-                g.DrawString(msg, font, Brushes.Red, (ClientSize.Width - size.Width) / 2, (ClientSize.Height - size.Height) / 2);
-                return;
+                g.DrawString(msg, font, Brushes.Red, ((float)game.Width - size.Width) / 2, ((float)game.Height - size.Height) / 2);
             }
-
-            if (_game.IsWon)
+            else if (game.IsWon)
             {
-                string msg = "You Won! Press R to Restart.";
+                string msg = "You Won!";
                 Font font = new Font("Arial", 24);
                 SizeF size = g.MeasureString(msg, font);
-                g.DrawString(msg, font, Brushes.Green, (ClientSize.Width - size.Width) / 2, (ClientSize.Height - size.Height) / 2);
-                return;
+                g.DrawString(msg, font, Brushes.Green, ((float)game.Width - size.Width) / 2, ((float)game.Height - size.Height) / 2);
             }
-
-            // Draw Paddle
-            g.FillRectangle(Brushes.Blue, (float)_game.Paddle.X, (float)_game.Paddle.Y, (float)_game.Paddle.Width, (float)_game.Paddle.Height);
-
-            // Draw Ball
-            g.FillEllipse(Brushes.White, (float)(_game.Ball.X - _game.Ball.Radius), (float)(_game.Ball.Y - _game.Ball.Radius), (float)(_game.Ball.Radius * 2), (float)(_game.Ball.Radius * 2));
-
-            // Draw Blocks
-            foreach (var block in _game.Blocks)
+            else
             {
-                Brush brush;
-                switch (block.Color)
+                // Draw Paddle
+                g.FillRectangle(Brushes.Blue, (float)game.Paddle.X, (float)game.Paddle.Y, (float)game.Paddle.Width, (float)game.Paddle.Height);
+
+                // Draw Ball
+                g.FillEllipse(Brushes.White, (float)(game.Ball.X - game.Ball.Radius), (float)(game.Ball.Y - game.Ball.Radius), (float)(game.Ball.Radius * 2), (float)(game.Ball.Radius * 2));
+
+                // Draw Blocks
+                Font numberFont = new Font("Arial", 10, FontStyle.Bold);
+                foreach (var block in game.Blocks)
                 {
-                    case "Red": brush = Brushes.Red; break;
-                    case "Orange": brush = Brushes.Orange; break;
-                    case "Yellow": brush = Brushes.Yellow; break;
-                    case "Green": brush = Brushes.Green; break;
-                    case "Blue": brush = Brushes.Blue; break;
-                    default: brush = Brushes.Gray; break;
+                    Brush brush;
+                    switch (block.Color)
+                    {
+                        case "Red": brush = Brushes.Red; break;
+                        case "Orange": brush = Brushes.Orange; break;
+                        case "Yellow": brush = Brushes.Yellow; break;
+                        case "Green": brush = Brushes.Green; break;
+                        case "Blue": brush = Brushes.Blue; break;
+                        default: brush = Brushes.Gray; break;
+                    }
+                    g.FillRectangle(brush, (float)block.X, (float)block.Y, (float)block.Width, (float)block.Height);
+
+                    // Draw Health Number
+                    string healthText = block.Health.ToString();
+                    SizeF textSize = g.MeasureString(healthText, numberFont);
+                    g.DrawString(healthText, numberFont, Brushes.Black,
+                        (float)(block.X + (block.Width - textSize.Width) / 2),
+                        (float)(block.Y + (block.Height - textSize.Height) / 2));
                 }
-                g.FillRectangle(brush, (float)block.X, (float)block.Y, (float)block.Width, (float)block.Height);
             }
+
+            g.Restore(state);
+        }
+
+        private void DrawStatusBar(Graphics g)
+        {
+            float barY = 550;
+            float barHeight = 50;
+            g.FillRectangle(Brushes.DarkGray, 0, barY, 1600, barHeight);
+
+            Font font = new Font("Arial", 16);
+            Brush brush = Brushes.White;
+
+            // Timer
+            string timeStr = $"Time: {_gameTimer.Elapsed:mm\\:ss}";
+            g.DrawString(timeStr, font, brush, 750, barY + 10);
+
+            // Scores
+            g.DrawString($"Left Score: {_gameLeft.Score}", font, brush, 50, barY + 10);
+            g.DrawString($"Right Score: {_gameRight.Score}", font, brush, 1350, barY + 10);
         }
 
         // Handle Restart
         protected override void OnKeyDown(KeyEventArgs e)
         {
              base.OnKeyDown(e);
-             if (e.KeyCode == Keys.R && (_game.IsGameOver || _game.IsWon))
+             if (e.KeyCode == Keys.R)
              {
-                 _game.Initialize();
+                 _gameLeft.Initialize();
+                 _gameRight.Initialize();
+                 _gameTimer.Restart();
              }
         }
     }

@@ -59,22 +59,50 @@ namespace BrickBreaker.Tests
         }
 
         [Fact]
-        public void Ball_ShouldBreakBlock()
+        public void Ball_ShouldDamageAndBreakBlock()
         {
             var game = new Game(800, 600);
-            // Find a block
+            // Remove all blocks except one to avoid interference
             var block = game.Blocks.First();
+            game.Blocks.Clear();
+            game.Blocks.Add(block);
+
+            block.Health = 1; // Set health to 1 so it breaks in one hit
 
             // Place ball just below block moving up
             game.Ball.X = block.X + block.Width / 2;
-            game.Ball.Y = block.Y + block.Height + game.Ball.Radius + 1;
-            game.Ball.VelocityY = -5;
+            game.Ball.Y = block.Y + block.Height + game.Ball.Radius + 0.1;
+            // High speed collision for the new physics loop
+            game.Ball.VelocityY = -20;
+            game.Ball.VelocityX = 0;
 
-            int initialCount = game.Blocks.Count;
             game.Update();
 
-            Assert.Equal(initialCount - 1, game.Blocks.Count);
+            Assert.Empty(game.Blocks);
             Assert.True(game.Ball.VelocityY > 0); // Should bounce down
+        }
+
+        [Fact]
+        public void Ball_ShouldDamageButNotBreakBlock_WhenHealthGT1()
+        {
+            var game = new Game(800, 600);
+            // Remove all blocks except one
+            var block = game.Blocks.First();
+            game.Blocks.Clear();
+            game.Blocks.Add(block);
+
+            block.Health = 2; // Health > 1
+
+            game.Ball.X = block.X + block.Width / 2;
+            game.Ball.Y = block.Y + block.Height + game.Ball.Radius + 0.1;
+            game.Ball.VelocityY = -20;
+            game.Ball.VelocityX = 0;
+
+            game.Update();
+
+            Assert.Single(game.Blocks); // Should not remove
+            Assert.Equal(1, block.Health); // Should decrement
+            Assert.True(game.Ball.VelocityY > 0); // Should bounce
         }
 
         [Fact]
