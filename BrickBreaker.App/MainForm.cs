@@ -12,6 +12,7 @@ namespace BrickBreaker.App
         private Game _gameRight;
         private Timer _timer;
         private Stopwatch _gameTimer;
+        private Stopwatch _frameTimer;
 
         public MainForm()
         {
@@ -34,6 +35,9 @@ namespace BrickBreaker.App
             _gameTimer = new Stopwatch();
             _gameTimer.Start();
 
+            _frameTimer = new Stopwatch();
+            _frameTimer.Start();
+
             _timer = new Timer();
             _timer.Interval = 16; // ~60 FPS
             _timer.Tick += Timer_Tick;
@@ -42,8 +46,14 @@ namespace BrickBreaker.App
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            _gameLeft.Update();
-            _gameRight.Update();
+            double dt = _frameTimer.Elapsed.TotalSeconds;
+            _frameTimer.Restart();
+
+            // Cap dt to avoid huge jumps
+            if (dt > 0.1) dt = 0.1;
+
+            _gameLeft.Update(dt);
+            _gameRight.Update(dt);
             this.Invalidate(); // Redraw
         }
 
@@ -96,6 +106,34 @@ namespace BrickBreaker.App
 
                 // Draw Ball
                 g.FillEllipse(Brushes.White, (float)(game.Ball.X - game.Ball.Radius), (float)(game.Ball.Y - game.Ball.Radius), (float)(game.Ball.Radius * 2), (float)(game.Ball.Radius * 2));
+
+                // Draw Falling Items
+                foreach (var item in game.FallingItems)
+                {
+                    if (item.Type == ItemType.Star)
+                    {
+                        // Yellow Star (approximated as diamond/circle for simplicity or simple polygon)
+                        PointF[] starPoints = new PointF[]
+                        {
+                            new PointF((float)item.X, (float)item.Y - 10),
+                            new PointF((float)item.X + 8, (float)item.Y + 8),
+                            new PointF((float)item.X - 8, (float)item.Y + 8)
+                        };
+                         g.FillEllipse(Brushes.Yellow, (float)item.X - 8, (float)item.Y - 8, 16, 16);
+                         // g.FillPolygon(Brushes.Yellow, starPoints); // Simple triangle/star
+                    }
+                    else if (item.Type == ItemType.Triangle)
+                    {
+                        // Green Triangle
+                        PointF[] triPoints = new PointF[]
+                        {
+                            new PointF((float)item.X, (float)item.Y - 10),
+                            new PointF((float)item.X + 10, (float)item.Y + 10),
+                            new PointF((float)item.X - 10, (float)item.Y + 10)
+                        };
+                        g.FillPolygon(Brushes.LightGreen, triPoints);
+                    }
+                }
 
                 // Draw Blocks
                 Font numberFont = new Font("Arial", 10, FontStyle.Bold);

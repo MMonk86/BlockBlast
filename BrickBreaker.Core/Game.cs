@@ -1,8 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace BrickBreaker.Core
 {
+    public enum ItemType
+    {
+        None,
+        Star,       // Slows ball
+        Triangle    // Widens paddle
+    }
+
     public class Game
     {
         public double Width { get; private set; }
@@ -10,11 +18,21 @@ namespace BrickBreaker.Core
         public Ball Ball { get; private set; }
         public Paddle Paddle { get; private set; }
         public List<Block> Blocks { get; private set; }
+        public List<FallingItem> FallingItems { get; private set; }
         public bool IsGameOver { get; private set; }
         public bool IsWon { get; private set; }
         public int Score { get; private set; }
 
+        // Timers
+        public double BlockDescentTimer { get; private set; }
+        public double StarEffectTimer { get; private set; }
+        public double TriangleEffectTimer { get; private set; }
+
         public event Action<Block> OnBlockBroken;
+
+        private const double BaseBallSpeed = 15.0; // Reduced by 2x from 30
+        private const double BasePaddleWidth = 100.0;
+        private const double BasePaddleSpeed = 40.0;
 
         public Game(double width, double height)
         {
@@ -28,15 +46,18 @@ namespace BrickBreaker.Core
             IsGameOver = false;
             IsWon = false;
             Score = 0;
+            BlockDescentTimer = 0;
+            StarEffectTimer = 0;
+            TriangleEffectTimer = 0;
+            FallingItems = new List<FallingItem>();
 
             // Paddle at bottom center
-            Paddle = new Paddle(Width / 2 - 50, Height - 30, 100, 20);
+            Paddle = new Paddle(Width / 2 - 50, Height - 30, BasePaddleWidth, 20);
 
             // Ball just above paddle
-            // Speed reduced by 5x (150 -> 30).
-            // 30 pixels per frame is still fast but manageable. Sub-stepping logic is kept for robustness.
+            // Speed reduced (150 -> 30 -> 15)
             double startX = ballStartX ?? (Width / 2);
-            Ball = new Ball(startX, Height - 40, 5, 30, -30);
+            Ball = new Ball(startX, Height - 40, 5, BaseBallSpeed, -BaseBallSpeed);
 
             // Blocks
             Blocks = new List<Block>();
@@ -62,13 +83,45 @@ namespace BrickBreaker.Core
                     ));
                 }
             }
+
+            // Assign Items to 10% of blocks
+            int itemCount = (int)(Blocks.Count * 0.1);
+            var shuffledBlocks = Blocks.OrderBy(x => rnd.Next()).Take(itemCount).ToList();
+
+            // Split between Star and Triangle
+            for (int i = 0; i < shuffledBlocks.Count; i++)
+            {
+                if (i % 2 == 0) shuffledBlocks[i].Item = ItemType.Star;
+                else shuffledBlocks[i].Item = ItemType.Triangle;
+            }
         }
 
-        public void Update()
+        public void Update(double deltaTime)
         {
             if (IsGameOver || IsWon) return;
 
-            // AI Paddle Movement
+            // --- Effect Timers ---
+            if (StarEffectTimer > 0) StarEffectTimer -= deltaTime;
+            if (TriangleEffectTimer > 0) TriangleEffectTimer -= deltaTime;
+
+            // Apply Effects
+            double currentSpeedScale = (StarEffectTimer > 0) ? 0.8 : 1.0;
+            double currentPaddleWidth = (TriangleEffectTimer > 0) ? BasePaddleWidth * 1.2 : BasePaddleWidth;
+
+            Paddle.Width = currentPaddleWidth;
+
+            // --- Block Descent ---
+            BlockDescentTimer += deltaTime;
+            if (BlockDescentTimer >= 30.0)
+            {
+                BlockDescentTimer = 0;
+                foreach (var block in Blocks)
+                {
+                    block.Y += block.Height;
+                }
+            }
+
+            // --- AI Paddle Movement ---
             double targetX = Ball.X;
 
             // If ball is coming down, try to aim
@@ -77,23 +130,18 @@ namespace BrickBreaker.Core
                 double predictedX = PredictBallXAtPaddle();
                 double centroidX = GetBlockCentroidX();
 
-                // If blocks are to the Left of impact, we want to hit ball with Right side of paddle (send Left)
-                // This means PaddleCenter should be to the Right of Ball.
-                // Offset = +35
-
                 double offset = 0;
                 if (Blocks.Count > 0)
                 {
                     if (centroidX < predictedX) offset = 35; // Aim Left
                     else offset = -35; // Aim Right
                 }
-
                 targetX = predictedX + offset;
             }
 
             double paddleCenter = Paddle.X + Paddle.Width / 2;
             double diff = targetX - paddleCenter;
-            double aiSpeed = 40; // Increased speed (2x from 20)
+            double aiSpeed = BasePaddleSpeed;
 
             if (Math.Abs(diff) > 5)
             {
@@ -101,16 +149,42 @@ namespace BrickBreaker.Core
                 else MovePaddle(-aiSpeed);
             }
 
-            // Physics Sub-stepping
-            // With very high speeds, we must move in small steps to prevent tunneling
-            double speed = Math.Sqrt(Ball.VelocityX * Ball.VelocityX + Ball.VelocityY * Ball.VelocityY);
+            // --- Falling Items ---
+            for (int i = FallingItems.Count - 1; i >= 0; i--)
+            {
+                var item = FallingItems[i];
+                item.Y += 5; // Fall speed
+
+                // Check collision with paddle
+                if (CheckItemCollision(item, Paddle))
+                {
+                    if (item.Type == ItemType.Star) StarEffectTimer = 10.0;
+                    if (item.Type == ItemType.Triangle) TriangleEffectTimer = 10.0;
+                    FallingItems.RemoveAt(i);
+                }
+                else if (item.Y > Height)
+                {
+                    FallingItems.RemoveAt(i);
+                }
+            }
+
+            // --- Ball Physics Sub-stepping ---
+            double currentBallSpeed = BaseBallSpeed * currentSpeedScale;
+            // Normalize current velocity to match currentBallSpeed
+            double currentVelMag = Math.Sqrt(Ball.VelocityX * Ball.VelocityX + Ball.VelocityY * Ball.VelocityY);
+            if (Math.Abs(currentVelMag - currentBallSpeed) > 0.1 && currentVelMag > 0.001)
+            {
+                double scale = currentBallSpeed / currentVelMag;
+                Ball.VelocityX *= scale;
+                Ball.VelocityY *= scale;
+            }
+
+            double speed = currentBallSpeed;
             double stepSize = Ball.Radius; // Safe step size
             if (stepSize < 2) stepSize = 2; // Min step
 
             double distanceRemaining = speed;
-            double stepRatio = stepSize / speed;
 
-            // If speed is 0 (shouldn't happen) avoid div by zero
             if (speed < 0.001) return;
 
             while (distanceRemaining > 0)
@@ -123,8 +197,6 @@ namespace BrickBreaker.Core
                 Ball.Y += Ball.VelocityY * ratio;
 
                 distanceRemaining -= moveDist;
-
-                // --- Collision Checks at this sub-step ---
 
                 // Wall Collisions
                 if (Ball.X - Ball.Radius < 0)
@@ -145,7 +217,6 @@ namespace BrickBreaker.Core
                 }
                 else if (Ball.Y - Ball.Radius > Height)
                 {
-                    // Missed paddle
                     IsGameOver = true;
                     return;
                 }
@@ -155,47 +226,40 @@ namespace BrickBreaker.Core
                 {
                     Ball.VelocityY = -Math.Abs(Ball.VelocityY); // Bounce up
 
-                    // Adjust angle based on where it hit the paddle
                     double hitPoint = Ball.X - (Paddle.X + Paddle.Width / 2);
-                    // Keep the high speed magnitude but change direction
                     double currentSpeed = Math.Sqrt(Ball.VelocityX*Ball.VelocityX + Ball.VelocityY*Ball.VelocityY);
 
-                    // Calculate new direction vector
-                    // We want a spread of angles.
-                    // Hit point ranges from -50 to +50
-                    // Normalized: -1 to 1
                     double normalizedHit = hitPoint / (Paddle.Width / 2);
-
-                    // Simple deviation: Add horizontal velocity proportional to hit
                     Ball.VelocityX = normalizedHit * currentSpeed * 0.75;
 
-                    // Re-normalize to maintain speed
                     double newSpeed = Math.Sqrt(Ball.VelocityX*Ball.VelocityX + Ball.VelocityY*Ball.VelocityY);
                     Ball.VelocityX = (Ball.VelocityX / newSpeed) * currentSpeed;
                     Ball.VelocityY = (Ball.VelocityY / newSpeed) * currentSpeed;
 
-                    // Ensure Y is negative (up)
                     if (Ball.VelocityY > 0) Ball.VelocityY = -Ball.VelocityY;
                 }
 
                 // Block Collision
-                bool hitBlock = false;
                 for (int i = Blocks.Count - 1; i >= 0; i--)
                 {
                     if (CheckCollision(Ball, Blocks[i]))
                     {
                         ResolveBlockCollision(Ball, Blocks[i]);
 
-                        // Handle health
                         var block = Blocks[i];
                         block.Health--;
                         Score += 10;
 
                         if (block.Health <= 0)
                         {
+                            if (block.Item != ItemType.None)
+                            {
+                                FallingItems.Add(new FallingItem(block.X + block.Width/2, block.Y + block.Height/2, block.Item));
+                            }
+
                             OnBlockBroken?.Invoke(block);
                             Blocks.RemoveAt(i);
-                            Score += 100; // Bonus for breaking
+                            Score += 100;
                         }
 
                         if (Blocks.Count == 0)
@@ -203,22 +267,9 @@ namespace BrickBreaker.Core
                             IsWon = true;
                             return;
                         }
-                        hitBlock = true;
-                        break; // Handle one block collision per step
+                        break;
                     }
                 }
-
-                // If we hit something major (paddle or block), we might want to stop this frame's movement
-                // or just continue. For simplicity, continue, but re-evaluating velocities in next loop iteration
-                // would be complex because we are inside a fixed loop based on initial velocity.
-                // However, since we modify VelocityX/Y upon collision, the next x += vx * ratio will use the NEW velocity.
-                // But `speed` variable is constant for the loop.
-                // We should update the `speed` variable if velocity changes direction, but magnitude should stay roughly same.
-                // Actually, if we bounce, we change direction. The loop moves by `moveDist` along the velocity vector.
-                // If we change velocity vector mid-loop, the next sub-step should use the new vector.
-                // So: `Ball.X += Ball.VelocityX * ratio` works fine because it reads current Velocity.
-                // But `distanceRemaining` assumes constant speed.
-                // If speed magnitude changes significantly, this loop logic is slightly flawed, but for Pong physics (constant speed), it's fine.
             }
         }
 
@@ -231,8 +282,6 @@ namespace BrickBreaker.Core
 
         private bool CheckCollision(Ball ball, IRect rect)
         {
-            // Simple Circle-Rectangle collision
-            // Find the closest point on the rectangle to the center of the circle
             double closestX = Math.Max(rect.X, Math.Min(ball.X, rect.X + rect.Width));
             double closestY = Math.Max(rect.Y, Math.Min(ball.Y, rect.Y + rect.Height));
 
@@ -241,6 +290,12 @@ namespace BrickBreaker.Core
 
             double distanceSquared = (distanceX * distanceX) + (distanceY * distanceY);
             return distanceSquared < (ball.Radius * ball.Radius);
+        }
+
+        private bool CheckItemCollision(FallingItem item, Paddle paddle)
+        {
+            return (item.X >= paddle.X && item.X <= paddle.X + paddle.Width &&
+                    item.Y >= paddle.Y && item.Y <= paddle.Y + paddle.Height);
         }
 
         private double GetBlockCentroidX()
@@ -253,16 +308,12 @@ namespace BrickBreaker.Core
 
         private double PredictBallXAtPaddle()
         {
-            // Simple prediction assuming straight line or simple bounce
-            // Not perfect but better than tracking current X
-
+            if (Math.Abs(Ball.VelocityY) < 0.001) return Ball.X;
             double timeSteps = (Paddle.Y - Ball.Y) / Ball.VelocityY;
             if (timeSteps <= 0) return Ball.X;
 
             double futureX = Ball.X + Ball.VelocityX * timeSteps;
 
-            // Handle simple single wall bounce estimation
-            // (Iterative bounce handling is better but complex for this scope)
             while (futureX < 0 || futureX > Width)
             {
                 if (futureX < 0) futureX = -futureX;
@@ -273,40 +324,28 @@ namespace BrickBreaker.Core
 
         private void ResolveBlockCollision(Ball ball, Block block)
         {
-            // Determine intersection details to find which side was hit
             double ballCenterX = ball.X;
             double ballCenterY = ball.Y;
-
             double blockCenterX = block.X + block.Width / 2;
             double blockCenterY = block.Y + block.Height / 2;
-
             double dx = ballCenterX - blockCenterX;
             double dy = ballCenterY - blockCenterY;
-
             double combinedHalfWidth = (block.Width / 2) + ball.Radius;
             double combinedHalfHeight = (block.Height / 2) + ball.Radius;
-
-            // Check overlap
             double overlapX = combinedHalfWidth - Math.Abs(dx);
             double overlapY = combinedHalfHeight - Math.Abs(dy);
 
-            // If overlaps are valid
             if (overlapX > 0 && overlapY > 0)
             {
-                // Collision on the side with minimal overlap
                 if (overlapX < overlapY)
                 {
-                    // Hit left or right
-                    ball.VelocityX = -ball.VelocityX;
-                    // Correct position to avoid sticking
-                    if (dx > 0) ball.X += overlapX; else ball.X -= overlapX;
+                    Ball.VelocityX = -Ball.VelocityX;
+                    if (dx > 0) Ball.X += overlapX; else Ball.X -= overlapX;
                 }
                 else
                 {
-                    // Hit top or bottom
-                    ball.VelocityY = -ball.VelocityY;
-                     // Correct position
-                    if (dy > 0) ball.Y += overlapY; else ball.Y -= overlapY;
+                    Ball.VelocityY = -Ball.VelocityY;
+                    if (dy > 0) Ball.Y += overlapY; else Ball.Y -= overlapY;
                 }
             }
         }
@@ -363,6 +402,7 @@ namespace BrickBreaker.Core
         public string Color { get; set; }
         public int MaxHealth { get; set; }
         public int Health { get; set; }
+        public ItemType Item { get; set; }
 
         public Block(double x, double y, double width, double height, string color, int health)
         {
@@ -373,6 +413,21 @@ namespace BrickBreaker.Core
             Color = color;
             MaxHealth = health;
             Health = health;
+            Item = ItemType.None;
+        }
+    }
+
+    public class FallingItem
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+        public ItemType Type { get; set; }
+
+        public FallingItem(double x, double y, ItemType type)
+        {
+            X = x;
+            Y = y;
+            Type = type;
         }
     }
 }

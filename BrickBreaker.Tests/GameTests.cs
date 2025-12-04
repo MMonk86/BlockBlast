@@ -25,7 +25,7 @@ namespace BrickBreaker.Tests
             double initialX = game.Ball.X;
             double initialY = game.Ball.Y;
 
-            game.Update();
+            game.Update(0.16);
 
             Assert.NotEqual(initialX, game.Ball.X);
             Assert.NotEqual(initialY, game.Ball.Y);
@@ -39,7 +39,7 @@ namespace BrickBreaker.Tests
             game.Ball.X = 5;
             game.Ball.VelocityX = -5;
 
-            game.Update(); // Should hit wall and bounce
+            game.Update(0.16); // Should hit wall and bounce
 
             Assert.True(game.Ball.VelocityX > 0);
         }
@@ -53,7 +53,7 @@ namespace BrickBreaker.Tests
             game.Ball.Y = game.Paddle.Y - game.Ball.Radius - 1;
             game.Ball.VelocityY = 5;
 
-            game.Update();
+            game.Update(0.16);
 
             Assert.True(game.Ball.VelocityY < 0);
         }
@@ -76,7 +76,7 @@ namespace BrickBreaker.Tests
             game.Ball.VelocityY = -20;
             game.Ball.VelocityX = 0;
 
-            game.Update();
+            game.Update(0.16);
 
             Assert.Empty(game.Blocks);
             Assert.True(game.Ball.VelocityY > 0); // Should bounce down
@@ -98,7 +98,7 @@ namespace BrickBreaker.Tests
             game.Ball.VelocityY = -20;
             game.Ball.VelocityX = 0;
 
-            game.Update();
+            game.Update(0.16);
 
             Assert.Single(game.Blocks); // Should not remove
             Assert.Equal(1, block.Health); // Should decrement
@@ -113,7 +113,7 @@ namespace BrickBreaker.Tests
             game.Ball.Y = 600 + game.Ball.Radius + 1; // Start clearly off screen
             game.Ball.VelocityY = 5;
 
-            game.Update();
+            game.Update(0.16);
 
             Assert.True(game.IsGameOver);
         }
