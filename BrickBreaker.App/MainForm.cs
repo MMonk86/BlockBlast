@@ -13,6 +13,8 @@ namespace BrickBreaker.App
         private Timer _timer;
         private Stopwatch _gameTimer;
         private Stopwatch _frameTimer;
+        private bool _leftKeyPressed;
+        private bool _rightKeyPressed;
 
         public MainForm()
         {
@@ -24,16 +26,23 @@ namespace BrickBreaker.App
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
 
+            // Create Menu
+            MenuStrip menuStrip = new MenuStrip();
+            ToolStripMenuItem modeMenu = new ToolStripMenuItem("Mode");
+            ToolStripMenuItem aiModeItem = new ToolStripMenuItem("AI vs AI (Default)", null, (s, e) => StartGame(true));
+            ToolStripMenuItem playerModeItem = new ToolStripMenuItem("Player (Left) vs AI (Right)", null, (s, e) => StartGame(false));
+
+            modeMenu.DropDownItems.Add(aiModeItem);
+            modeMenu.DropDownItems.Add(playerModeItem);
+            menuStrip.Items.Add(modeMenu);
+            this.Controls.Add(menuStrip);
+            this.MainMenuStrip = menuStrip;
+
             // Split width in half for each game
             _gameLeft = new Game(800, 550); // Height reduced for status bar space
             _gameRight = new Game(800, 550);
 
-            // Set different start positions
-            _gameLeft.Initialize(200); // 1/4 width
-            _gameRight.Initialize(600); // 3/4 width
-
-            _gameTimer = new Stopwatch();
-            _gameTimer.Start();
+            StartGame(true); // Default to AI vs AI
 
             _frameTimer = new Stopwatch();
             _frameTimer.Start();
@@ -44,6 +53,18 @@ namespace BrickBreaker.App
             _timer.Start();
         }
 
+        private void StartGame(bool aiVsAi)
+        {
+            _gameLeft.Initialize(200);
+            _gameRight.Initialize(600);
+
+            _gameLeft.IsAIControlled = aiVsAi;
+            _gameRight.IsAIControlled = true; // Right is always AI
+
+            if (_gameTimer == null) _gameTimer = new Stopwatch();
+            _gameTimer.Restart();
+        }
+
         private void Timer_Tick(object sender, EventArgs e)
         {
             double dt = _frameTimer.Elapsed.TotalSeconds;
@@ -51,6 +72,14 @@ namespace BrickBreaker.App
 
             // Cap dt to avoid huge jumps
             if (dt > 0.1) dt = 0.1;
+
+            // Handle Manual Input for Left Game
+            if (!_gameLeft.IsAIControlled)
+            {
+                double speed = 40.0; // Same as AI speed
+                if (_leftKeyPressed) _gameLeft.MovePaddle(-speed);
+                if (_rightKeyPressed) _gameLeft.MovePaddle(speed);
+            }
 
             _gameLeft.Update(dt);
             _gameRight.Update(dt);
@@ -185,16 +214,31 @@ namespace BrickBreaker.App
         protected override void OnKeyDown(KeyEventArgs e)
         {
              base.OnKeyDown(e);
+
+             if (e.KeyCode == Keys.Left) _leftKeyPressed = true;
+             if (e.KeyCode == Keys.Right) _rightKeyPressed = true;
+
              // Restart only if both games are finished
              bool leftDone = _gameLeft.IsGameOver || _gameLeft.IsWon;
              bool rightDone = _gameRight.IsGameOver || _gameRight.IsWon;
 
              if (e.KeyCode == Keys.R && leftDone && rightDone)
              {
+                 // Maintain current AI mode setting on restart
+                 bool currentAI = _gameLeft.IsAIControlled;
                  _gameLeft.Initialize(200);
                  _gameRight.Initialize(600);
+                 _gameLeft.IsAIControlled = currentAI;
+                 _gameRight.IsAIControlled = true;
                  _gameTimer.Restart();
              }
+        }
+
+        protected override void OnKeyUp(KeyEventArgs e)
+        {
+            base.OnKeyUp(e);
+            if (e.KeyCode == Keys.Left) _leftKeyPressed = false;
+            if (e.KeyCode == Keys.Right) _rightKeyPressed = false;
         }
     }
 }

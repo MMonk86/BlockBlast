@@ -22,6 +22,7 @@ namespace BrickBreaker.Core
         public bool IsGameOver { get; private set; }
         public bool IsWon { get; private set; }
         public int Score { get; private set; }
+        public bool IsAIControlled { get; set; } = true;
 
         // Timers
         public double BlockDescentTimer { get; private set; }
@@ -122,31 +123,34 @@ namespace BrickBreaker.Core
             }
 
             // --- AI Paddle Movement ---
-            double targetX = Ball.X;
-
-            // If ball is coming down, try to aim
-            if (Ball.VelocityY > 0)
+            if (IsAIControlled)
             {
-                double predictedX = PredictBallXAtPaddle();
-                double centroidX = GetBlockCentroidX();
+                double targetX = Ball.X;
 
-                double offset = 0;
-                if (Blocks.Count > 0)
+                // If ball is coming down, try to aim
+                if (Ball.VelocityY > 0)
                 {
-                    if (centroidX < predictedX) offset = 35; // Aim Left
-                    else offset = -35; // Aim Right
+                    double predictedX = PredictBallXAtPaddle();
+                    double centroidX = GetBlockCentroidX();
+
+                    double offset = 0;
+                    if (Blocks.Count > 0)
+                    {
+                        if (centroidX < predictedX) offset = 35; // Aim Left
+                        else offset = -35; // Aim Right
+                    }
+                    targetX = predictedX + offset;
                 }
-                targetX = predictedX + offset;
-            }
 
-            double paddleCenter = Paddle.X + Paddle.Width / 2;
-            double diff = targetX - paddleCenter;
-            double aiSpeed = BasePaddleSpeed;
+                double paddleCenter = Paddle.X + Paddle.Width / 2;
+                double diff = targetX - paddleCenter;
+                double aiSpeed = BasePaddleSpeed;
 
-            if (Math.Abs(diff) > 5)
-            {
-                if (diff > 0) MovePaddle(aiSpeed);
-                else MovePaddle(-aiSpeed);
+                if (Math.Abs(diff) > 5)
+                {
+                    if (diff > 0) MovePaddle(aiSpeed);
+                    else MovePaddle(-aiSpeed);
+                }
             }
 
             // --- Falling Items ---
