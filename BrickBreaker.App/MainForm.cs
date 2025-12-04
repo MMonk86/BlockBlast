@@ -27,6 +27,10 @@ namespace BrickBreaker.App
             _gameLeft = new Game(800, 550); // Height reduced for status bar space
             _gameRight = new Game(800, 550);
 
+            // Set different start positions
+            _gameLeft.Initialize(200); // 1/4 width
+            _gameRight.Initialize(600); // 3/4 width
+
             _gameTimer = new Stopwatch();
             _gameTimer.Start();
 
@@ -143,10 +147,14 @@ namespace BrickBreaker.App
         protected override void OnKeyDown(KeyEventArgs e)
         {
              base.OnKeyDown(e);
-             if (e.KeyCode == Keys.R)
+             // Restart only if both games are finished
+             bool leftDone = _gameLeft.IsGameOver || _gameLeft.IsWon;
+             bool rightDone = _gameRight.IsGameOver || _gameRight.IsWon;
+
+             if (e.KeyCode == Keys.R && leftDone && rightDone)
              {
-                 _gameLeft.Initialize();
-                 _gameRight.Initialize();
+                 _gameLeft.Initialize(200);
+                 _gameRight.Initialize(600);
                  _gameTimer.Restart();
              }
         }

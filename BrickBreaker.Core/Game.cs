@@ -23,7 +23,7 @@ namespace BrickBreaker.Core
             Initialize();
         }
 
-        public void Initialize()
+        public void Initialize(double? ballStartX = null)
         {
             IsGameOver = false;
             IsWon = false;
@@ -35,7 +35,8 @@ namespace BrickBreaker.Core
             // Ball just above paddle
             // Speed increased by 10x from "current" (15).
             // NOTE: 150 pixels per frame is extremely fast and requires sub-stepping in Update loop.
-            Ball = new Ball(Width / 2, Height - 40, 5, 150, -150);
+            double startX = ballStartX ?? (Width / 2);
+            Ball = new Ball(startX, Height - 40, 5, 150, -150);
 
             // Blocks
             Blocks = new List<Block>();
