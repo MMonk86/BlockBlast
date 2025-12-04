@@ -33,10 +33,10 @@ namespace BrickBreaker.Core
             Paddle = new Paddle(Width / 2 - 50, Height - 30, 100, 20);
 
             // Ball just above paddle
-            // Speed increased by 10x from "current" (15).
-            // NOTE: 150 pixels per frame is extremely fast and requires sub-stepping in Update loop.
+            // Speed reduced by 5x (150 -> 30).
+            // 30 pixels per frame is still fast but manageable. Sub-stepping logic is kept for robustness.
             double startX = ballStartX ?? (Width / 2);
-            Ball = new Ball(startX, Height - 40, 5, 150, -150);
+            Ball = new Ball(startX, Height - 40, 5, 30, -30);
 
             // Blocks
             Blocks = new List<Block>();
