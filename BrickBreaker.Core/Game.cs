@@ -93,7 +93,7 @@ namespace BrickBreaker.Core
 
             double paddleCenter = Paddle.X + Paddle.Width / 2;
             double diff = targetX - paddleCenter;
-            double aiSpeed = 20; // Fast enough to catch up
+            double aiSpeed = 40; // Increased speed (2x from 20)
 
             if (Math.Abs(diff) > 5)
             {
